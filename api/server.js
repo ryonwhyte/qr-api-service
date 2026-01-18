@@ -187,21 +187,29 @@ async function generateQRCode(options) {
     // Wait for QR code to regenerate
     await new Promise(r => setTimeout(r, 500));
 
-    // Find and capture the QR code canvas/image
-    const qrContainer = await page.$('.grid.place-items-center canvas, .grid.place-items-center img');
+    // Find the QR code container
+    const qrContainer = await page.$('#element-to-export');
 
     if (!qrContainer) {
-      // Try to find any canvas element
-      const canvas = await page.$('canvas');
-      if (canvas) {
-        const imageBuffer = await canvas.screenshot({ type: format === 'png' ? 'png' : 'jpeg' });
-        return imageBuffer;
-      }
       throw new Error('QR code element not found');
     }
 
-    const imageBuffer = await qrContainer.screenshot({ type: format === 'png' ? 'png' : 'jpeg' });
-    return imageBuffer;
+    // Return SVG markup or screenshot based on format
+    if (format === 'svg') {
+      const svgContent = await page.evaluate(() => {
+        const svg = document.querySelector('#element-to-export svg');
+        return svg ? svg.outerHTML : null;
+      });
+      if (!svgContent) {
+        throw new Error('SVG element not found');
+      }
+      return Buffer.from(svgContent, 'utf-8');
+    } else {
+      const imageBuffer = await qrContainer.screenshot({
+        type: format === 'png' ? 'png' : 'jpeg'
+      });
+      return imageBuffer;
+    }
 
   } finally {
     await page.close();
@@ -218,8 +226,9 @@ app.post('/generate', async (req, res) => {
   try {
     const imageBuffer = await generateQRCode(req.body);
     const format = req.body.format || 'png';
+    const contentType = format === 'svg' ? 'image/svg+xml' : `image/${format}`;
 
-    res.set('Content-Type', `image/${format}`);
+    res.set('Content-Type', contentType);
     res.set('Content-Disposition', `attachment; filename="qrcode.${format}"`);
     res.send(imageBuffer);
   } catch (error) {
@@ -252,8 +261,9 @@ app.get('/generate', async (req, res) => {
 
     const imageBuffer = await generateQRCode(options);
     const format = options.format || 'png';
+    const contentType = format === 'svg' ? 'image/svg+xml' : `image/${format}`;
 
-    res.set('Content-Type', `image/${format}`);
+    res.set('Content-Type', contentType);
     res.send(imageBuffer);
   } catch (error) {
     console.error('Error generating QR code:', error);
@@ -287,7 +297,7 @@ app.get('/', (req, res) => {
       cornersSquareType: 'Optional. Corner square style: square, rounded, dots, classy, classy-rounded, extra-rounded',
       cornersDotType: 'Optional. Corner dot style: square, rounded, dot',
       errorCorrectionLevel: 'Optional. Error correction: L (7%), M (15%), Q (25%), H (30%). Default: M',
-      format: 'Optional. Output format: png or jpeg. Default: png'
+      format: 'Optional. Output format: png, jpeg, or svg. Default: png'
     },
     example: {
       POST: {
