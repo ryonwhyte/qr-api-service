@@ -30,16 +30,11 @@ async function getBrowser() {
   return browser;
 }
 
-// Mapping for dot types
-const DOT_TYPES = ['square', 'rounded', 'dots', 'classy', 'classy-rounded', 'extra-rounded'];
-const CORNER_SQUARE_TYPES = ['square', 'rounded', 'dots', 'classy', 'classy-rounded', 'extra-rounded'];
-const CORNER_DOT_TYPES = ['square', 'rounded', 'dot'];
-const ERROR_CORRECTION_LEVELS = {
-  'L': 'Low (7%)',
-  'M': 'Medium (15%)',
-  'Q': 'High (25%)',
-  'H': 'Highest (30%)'
-};
+// Valid option values (matching mini-qr HTML)
+const DOT_TYPES = ['dots', 'rounded', 'classy', 'classy-rounded', 'square', 'extra-rounded'];
+const CORNER_SQUARE_TYPES = ['dot', 'square', 'extra-rounded'];
+const CORNER_DOT_TYPES = ['dot', 'square'];
+const ERROR_CORRECTION_LEVELS = ['L', 'M', 'Q', 'H'];
 
 async function generateQRCode(options) {
   const {
@@ -76,116 +71,84 @@ async function generateQRCode(options) {
     await page.goto(MINI_QR_URL, { waitUntil: 'networkidle0', timeout: 30000 });
 
     // Wait for the app to load
-    await page.waitForSelector('input.text-input', { timeout: 10000 });
+    await page.waitForSelector('#data', { timeout: 10000 });
 
-    // Clear and set the data to encode
-    const dataInput = await page.$('input.text-input');
-    await dataInput.click({ clickCount: 3 });
-    await dataInput.type(data);
-
-    // Helper function to set color input
-    async function setColorInput(labelText, color) {
-      const labels = await page.$$('label');
-      for (const label of labels) {
-        const text = await page.evaluate(el => el.textContent, label);
-        if (text.includes(labelText)) {
-          const parent = await label.evaluateHandle(el => el.closest('.flex'));
-          const colorInput = await parent.$('input.color-input');
-          if (colorInput) {
-            await page.evaluate((input, value) => {
-              input.value = value;
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              input.dispatchEvent(new Event('change', { bubbles: true }));
-            }, colorInput, color);
-          }
-          break;
-        }
+    // Helper: Set text/number input by ID
+    async function setInputById(id, value) {
+      const input = await page.$(`#${id}`);
+      if (input) {
+        await input.click({ clickCount: 3 });
+        await input.type(String(value));
       }
     }
 
-    // Helper function to set text input by label
-    async function setTextInputByLabel(labelText, value) {
-      const labels = await page.$$('label');
-      for (const label of labels) {
-        const text = await page.evaluate(el => el.textContent, label);
-        if (text.includes(labelText)) {
-          const parent = await label.evaluateHandle(el => el.closest('.flex'));
-          const input = await parent.$('input.text-input');
-          if (input) {
-            await input.click({ clickCount: 3 });
-            await input.type(String(value));
-          }
-          break;
-        }
+    // Helper: Set color input by ID
+    async function setColorById(id, color) {
+      const input = await page.$(`#${id}`);
+      if (input) {
+        await page.evaluate((el, value) => {
+          el.value = value;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }, input, color);
       }
     }
 
-    // Helper function to select radio option
-    async function selectRadioOption(optionValue) {
-      const labels = await page.$$('label');
-      for (const label of labels) {
-        const text = await page.evaluate(el => el.textContent?.trim(), label);
-        if (text === optionValue) {
-          await label.click();
-          break;
-        }
+    // Helper: Click radio by ID
+    async function selectRadioById(id) {
+      const radio = await page.$(`#${id}`);
+      if (radio) {
+        await radio.click();
       }
     }
 
-    // Expand all accordion sections to access all options
-    const accordionButtons = await page.$$('button[data-state]');
-    for (const btn of accordionButtons) {
-      const state = await page.evaluate(el => el.getAttribute('data-state'), btn);
-      if (state === 'closed') {
-        await btn.click();
-        await new Promise(r => setTimeout(r, 200));
-      }
-    }
+    // Set data to encode
+    await setInputById('data', data);
 
-    // Set Logo URL if provided
+    // Set logo URL if provided
     if (logoUrl) {
-      await setTextInputByLabel('Logo image URL', logoUrl);
+      await setInputById('image-url', logoUrl);
     }
 
     // Set colors
-    await setColorInput('Background color', backgroundColor);
-    await setColorInput('Dots color', dotsColor);
+    await setColorById('background-color', backgroundColor);
+    await setColorById('dots-color', dotsColor);
     if (cornersSquareColor) {
-      await setColorInput('Corners Square color', cornersSquareColor);
+      await setColorById('corners-square-color', cornersSquareColor);
     }
     if (cornersDotColor) {
-      await setColorInput('Corners Dot color', cornersDotColor);
+      await setColorById('corners-dot-color', cornersDotColor);
     }
 
     // Set dimensions
-    await setTextInputByLabel('Width', width);
-    await setTextInputByLabel('Height', height);
-    await setTextInputByLabel('Border radius', borderRadius);
-    await setTextInputByLabel('Margin', margin);
-    await setTextInputByLabel('Image margin', imageMargin);
+    await setInputById('width', width);
+    await setInputById('height', height);
+    await setInputById('border-radius', borderRadius);
+    await setInputById('margin', margin);
+    await setInputById('image-margin', imageMargin);
 
     // Set dot type
     if (dotsType && DOT_TYPES.includes(dotsType)) {
-      await selectRadioOption(dotsType);
+      await selectRadioById(`dotsOptionsType-${dotsType}`);
     }
 
     // Set corner square type
     if (cornersSquareType && CORNER_SQUARE_TYPES.includes(cornersSquareType)) {
-      await selectRadioOption(cornersSquareType);
+      await selectRadioById(`cornersSquareOptionsType-${cornersSquareType}`);
     }
 
     // Set corner dot type
     if (cornersDotType && CORNER_DOT_TYPES.includes(cornersDotType)) {
-      await selectRadioOption(cornersDotType);
+      await selectRadioById(`cornersDotOptionsType-${cornersDotType}`);
     }
 
     // Set error correction level
-    if (errorCorrectionLevel && ERROR_CORRECTION_LEVELS[errorCorrectionLevel]) {
-      await selectRadioOption(ERROR_CORRECTION_LEVELS[errorCorrectionLevel]);
+    if (errorCorrectionLevel && ERROR_CORRECTION_LEVELS.includes(errorCorrectionLevel)) {
+      await selectRadioById(`errorCorrectionLevel-${errorCorrectionLevel}`);
     }
 
-    // Wait for QR code to regenerate
-    await new Promise(r => setTimeout(r, 500));
+    // Wait for QR code to regenerate at new size
+    await new Promise(r => setTimeout(r, 1000));
 
     // Find the QR code container
     const qrContainer = await page.$('#element-to-export');
@@ -294,8 +257,8 @@ app.get('/', (req, res) => {
       margin: 'Optional. Margin in pixels. Default: 10',
       imageMargin: 'Optional. Image margin in pixels. Default: 0',
       dotsType: 'Optional. Dot style: square, rounded, dots, classy, classy-rounded, extra-rounded',
-      cornersSquareType: 'Optional. Corner square style: square, rounded, dots, classy, classy-rounded, extra-rounded',
-      cornersDotType: 'Optional. Corner dot style: square, rounded, dot',
+      cornersSquareType: 'Optional. Corner square style: dot, square, extra-rounded',
+      cornersDotType: 'Optional. Corner dot style: dot, square',
       errorCorrectionLevel: 'Optional. Error correction: L (7%), M (15%), Q (25%), H (30%). Default: M',
       format: 'Optional. Output format: png, jpeg, or svg. Default: png'
     },
