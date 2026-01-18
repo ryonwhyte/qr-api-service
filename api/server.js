@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const puppeteer = require('puppeteer');
+const sharp = require('sharp');
 
 const app = express();
 app.use(cors());
@@ -77,8 +78,12 @@ async function generateQRCode(options) {
     async function setInputById(id, value) {
       const input = await page.$(`#${id}`);
       if (input) {
-        await input.click({ clickCount: 3 });
-        await input.type(String(value));
+        // Set value directly and dispatch events to trigger reactivity
+        await page.evaluate((el, val) => {
+          el.value = val;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }, input, String(value));
       }
     }
 
@@ -150,27 +155,24 @@ async function generateQRCode(options) {
     // Wait for QR code to regenerate at new size
     await new Promise(r => setTimeout(r, 1000));
 
-    // Find the QR code container
-    const qrContainer = await page.$('#element-to-export');
+    // Extract SVG from the page
+    const svgContent = await page.evaluate(() => {
+      const svg = document.querySelector('#element-to-export svg');
+      return svg ? svg.outerHTML : null;
+    });
 
-    if (!qrContainer) {
-      throw new Error('QR code element not found');
+    if (!svgContent) {
+      throw new Error('SVG element not found');
     }
 
-    // Return SVG markup or screenshot based on format
+    // Return based on format
     if (format === 'svg') {
-      const svgContent = await page.evaluate(() => {
-        const svg = document.querySelector('#element-to-export svg');
-        return svg ? svg.outerHTML : null;
-      });
-      if (!svgContent) {
-        throw new Error('SVG element not found');
-      }
       return Buffer.from(svgContent, 'utf-8');
     } else {
-      const imageBuffer = await qrContainer.screenshot({
-        type: format === 'png' ? 'png' : 'jpeg'
-      });
+      // Convert SVG to PNG/JPEG using sharp
+      const imageBuffer = await sharp(Buffer.from(svgContent))
+        .toFormat(format === 'jpeg' ? 'jpeg' : 'png')
+        .toBuffer();
       return imageBuffer;
     }
 
