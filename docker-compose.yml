@@ -10,8 +10,5 @@ services:
       dockerfile: Dockerfile
     container_name: qr-api
     restart: unless-stopped
-    environment:
-      - MINI_QR_URL=http://mini-qr:80
-      - PORT=3000
     depends_on:
       - mini-qr
