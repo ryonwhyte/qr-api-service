@@ -1,0 +1,21 @@
+services:
+  mini-qr:
+    image: ghcr.io/lyqht/mini-qr:latest
+    container_name: mini-qr
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+
+  qr-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: qr-api
+    restart: unless-stopped
+    environment:
+      - MINI_QR_URL=http://mini-qr:80
+      - PORT=3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mini-qr
