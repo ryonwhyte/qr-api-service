@@ -1,7 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const puppeteer = require('puppeteer');
-const sharp = require('sharp');
+const fs = require('fs').promises;
+const path = require('path');
 
 const app = express();
 app.use(cors());
@@ -155,26 +156,44 @@ async function generateQRCode(options) {
     // Wait for QR code to regenerate at new size
     await new Promise(r => setTimeout(r, 1000));
 
-    // Extract SVG from the page
-    const svgContent = await page.evaluate(() => {
-      const svg = document.querySelector('#element-to-export svg');
-      return svg ? svg.outerHTML : null;
+    // Set up download behavior
+    const downloadPath = '/tmp/qr-downloads';
+    await fs.mkdir(downloadPath, { recursive: true });
+
+    const client = await page.createCDPSession();
+    await client.send('Page.setDownloadBehavior', {
+      behavior: 'allow',
+      downloadPath: downloadPath,
     });
 
-    if (!svgContent) {
-      throw new Error('SVG element not found');
+    // Click the appropriate download button
+    const buttonId = format === 'svg'
+      ? 'download-qr-image-button-svg'
+      : format === 'jpeg'
+        ? 'download-qr-image-button-jpg'
+        : 'download-qr-image-button-png';
+
+    await page.click(`#${buttonId}`);
+
+    // Wait for download to complete
+    await new Promise(r => setTimeout(r, 2000));
+
+    // Find the downloaded file
+    const files = await fs.readdir(downloadPath);
+    const ext = format === 'jpeg' ? 'jpg' : format;
+    const downloadedFile = files.find(f => f.endsWith(`.${ext}`));
+
+    if (!downloadedFile) {
+      throw new Error('Download failed - no file found');
     }
 
-    // Return based on format
-    if (format === 'svg') {
-      return Buffer.from(svgContent, 'utf-8');
-    } else {
-      // Convert SVG to PNG/JPEG using sharp
-      const imageBuffer = await sharp(Buffer.from(svgContent))
-        .toFormat(format === 'jpeg' ? 'jpeg' : 'png')
-        .toBuffer();
-      return imageBuffer;
-    }
+    const filePath = path.join(downloadPath, downloadedFile);
+    const imageBuffer = await fs.readFile(filePath);
+
+    // Clean up
+    await fs.unlink(filePath);
+
+    return imageBuffer;
 
   } finally {
     await page.close();
