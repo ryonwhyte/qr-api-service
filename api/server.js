@@ -135,7 +135,7 @@ async function generateQRCode(options) {
       const state = await page.evaluate(el => el.getAttribute('data-state'), btn);
       if (state === 'closed') {
         await btn.click();
-        await page.waitForTimeout(200);
+        await new Promise(r => setTimeout(r, 200));
       }
     }
 
@@ -182,7 +182,7 @@ async function generateQRCode(options) {
     }
 
     // Wait for QR code to regenerate
-    await page.waitForTimeout(500);
+    await new Promise(r => setTimeout(r, 500));
 
     // Find and capture the QR code canvas/image
     const qrContainer = await page.$('.grid.place-items-center canvas, .grid.place-items-center img');
