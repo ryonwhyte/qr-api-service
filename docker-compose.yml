@@ -1,9 +1,12 @@
+# The mini-qr service is gone on purpose.
+#
+# This API used to drive the Mini QR web app in a headless browser, pinned to
+# ghcr.io/lyqht/mini-qr:latest. On 6 November 2026 that image's PNG export stopped
+# producing a browser download and every PNG request started failing, with nothing
+# changed on our side. Rendering now happens in-process with qr-code-styling, which is
+# the same library Mini QR uses, so output is unchanged and there is no third-party UI
+# left to break.
 services:
-  mini-qr:
-    image: ghcr.io/lyqht/mini-qr:latest
-    container_name: mini-qr
-    restart: unless-stopped
-
   qr-api:
     build:
       context: ./api
@@ -11,7 +14,12 @@ services:
     container_name: qr-api
     restart: unless-stopped
     environment:
-      - MINI_QR_URL=${MINI_QR_URL}
       - PORT=${PORT:-3000}
-    depends_on:
-      - mini-qr
+    healthcheck:
+      # /health renders a real QR code, so this fails when generation is broken
+      # rather than only when the process is down.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 60s
+      timeout: 30s
+      start_period: 30s
+      retries: 3

@@ -1,6 +1,7 @@
 FROM node:20-slim
 
-# Install dependencies for Puppeteer
+# Chromium and fonts for Puppeteer. The QR itself is drawn by qr-code-styling; the
+# browser is only there to give it a canvas and an SVG renderer.
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-ipafont-gothic \
@@ -12,25 +13,24 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Puppeteer to use installed Chromium
+# Use the Chromium installed above instead of downloading another copy.
+# PUPPETEER_SKIP_DOWNLOAD is the current name; the older one is kept for safety.
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV NODE_ENV=production
 
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install --production
+RUN npm install --omit=dev --no-audit --no-fund
 
-# Copy application code
 COPY . .
 
-# Expose port
 EXPOSE 3000
 
-# Run as non-root user for security
+# Run as non-root.
 RUN groupadd -r pptruser && useradd -r -g pptruser -G audio,video pptruser \
     && mkdir -p /home/pptruser/Downloads \
     && chown -R pptruser:pptruser /home/pptruser \
