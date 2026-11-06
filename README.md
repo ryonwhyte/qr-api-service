@@ -14,6 +14,17 @@ Earlier versions drove the [Mini QR](https://github.com/lyqht/mini-qr) web app i
 browser: set its form fields by element id, click its download button, then look in a
 shared directory for the resulting file. That is gone. See [History](#history).
 
+## The two containers
+
+| Service | What it is | Domain | Port |
+|---------|-----------|--------|------|
+| `qr-api` | The API. Renders QR codes itself | `qr-api.cardyfi.com` | 3000 |
+| `mini-qr` | The Mini QR web UI, for making one-off codes by hand | `qr.cardyfi.com` | 8080 |
+
+**`qr-api` does not talk to `mini-qr`, and must not be made to again.** That coupling
+is what broke on 6 November. The UI is kept purely because it is handy on its own, and
+it is pinned by digest so it cannot change under a restart.
+
 ## Deployment (Dokploy)
 
 1. Create a new Compose project in Dokploy
@@ -21,10 +32,23 @@ shared directory for the resulting file. That is gone. See [History](#history).
 3. Set environment variables:
    - `PORT` - API port (default: `3000`)
 4. Deploy
-5. Configure the domain for the `qr-api` service, target port **3000**
+5. Configure domains:
+   - `qr-api` service: target port **3000**
+   - `mini-qr` service: target port **8080**
 
-There is no longer a second container. `MINI_QR_URL` is no longer used and can be
-removed from the project's environment.
+`MINI_QR_URL` is no longer used and can be removed from the project's environment.
+
+### Moving the UI to a newer Mini QR
+
+The image is pinned by digest on purpose. To move it deliberately:
+
+```bash
+docker pull ghcr.io/lyqht/mini-qr:latest
+docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/lyqht/mini-qr:latest
+```
+
+Put the new digest in `docker-compose.yml`. Nothing depends on this container, so the
+only thing at risk is the UI itself.
 
 ## Checking it works
 
@@ -166,6 +190,10 @@ On 6 November 2026 every PNG request began returning
 3. **A two-second sleep instead of waiting for the download.** Chromium writes
    partial downloads as `.crdownload`, which never matches `.png`.
 
-The rewrite removes the mechanism rather than patching it: no mini-qr, no element ids,
-no downloads, no shared state. `/health` renders for real, the browser relaunches if
-it dies, and the smoke test decodes what it renders.
+The rewrite removes the mechanism rather than patching it: the API no longer touches
+mini-qr, and there are no element ids, no downloads and no shared state. `/health`
+renders for real, the browser relaunches if it dies, and the smoke test decodes what
+it renders.
+
+The Mini QR container is still here for the `qr.cardyfi.com` UI, now pinned by digest
+and with nothing depending on it.

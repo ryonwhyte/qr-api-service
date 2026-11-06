@@ -1,12 +1,10 @@
-# The mini-qr service is gone on purpose.
-#
-# This API used to drive the Mini QR web app in a headless browser, pinned to
-# ghcr.io/lyqht/mini-qr:latest. On 6 November 2026 that image's PNG export stopped
-# producing a browser download and every PNG request started failing, with nothing
-# changed on our side. Rendering now happens in-process with qr-code-styling, which is
-# the same library Mini QR uses, so output is unchanged and there is no third-party UI
-# left to break.
 services:
+  # The API. Renders QR codes itself with qr-code-styling in headless Chromium.
+  #
+  # It does NOT talk to the mini-qr service below, and must not be made to again.
+  # It used to drive that app's UI by element id and click its download button. On
+  # 6 November 2026 an upstream image change broke PNG export and every PNG request
+  # failed for hours behind a green /health. Rendering now happens in this service.
   qr-api:
     build:
       context: ./api
@@ -15,11 +13,34 @@ services:
     restart: unless-stopped
     environment:
       - PORT=${PORT:-3000}
+    expose:
+      - "3000"
     healthcheck:
       # /health renders a real QR code, so this fails when generation is broken
-      # rather than only when the process is down.
+      # rather than only when the process is down. That is the check that was
+      # missing when PNG output broke.
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 60s
       timeout: 30s
       start_period: 30s
       retries: 3
+
+  # The Mini QR web UI, kept for making one-off codes by hand at qr.cardyfi.com.
+  #
+  # Pinned by digest rather than :latest. The :latest tag is what caused the
+  # 6 November outage: the image moved on a pull and took the API down with it.
+  # Nothing depends on this container now, so a change here can only affect the UI,
+  # and pinning means it changes when we choose rather than on a restart.
+  #
+  # Digest resolved from ghcr.io/lyqht/mini-qr:latest on 6 November 2026.
+  # To move it on deliberately:
+  #   docker pull ghcr.io/lyqht/mini-qr:latest
+  #   docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/lyqht/mini-qr:latest
+  mini-qr:
+    image: ghcr.io/lyqht/mini-qr@sha256:f6163e8a87fb06a2931adaea94209de7f14a47f8cadc8d600abfc429612fc858
+    container_name: mini-qr
+    restart: unless-stopped
+    # The image serves on 8080 (Cmd: serve -s dist -l 8080), which is the target
+    # port the qr.cardyfi.com domain needs in Dokploy.
+    expose:
+      - "8080"
